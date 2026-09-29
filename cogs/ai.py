@@ -34,7 +34,7 @@ class AICog(commands.Cog):
 
     def build_prompt(self, user_question):
 
-        knowledge_text = get_knowledge_text()
+        knowledge_text = get_knowledge_text(message.guild.id)
 
         return f"""
 You are Souvion AI, an AI assistant for a Discord server.
