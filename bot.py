@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 
 from config import DISCORD_TOKEN, BOT_PREFIX
+from cogs.knowledge import get_server_prefix
 
 
 # ==========================================
@@ -11,11 +12,26 @@ from config import DISCORD_TOKEN, BOT_PREFIX
 
 intents = discord.Intents.default()
 
-# Required to read message content
 intents.message_content = True
-
-# Required for future member-related features
 intents.members = True
+
+
+# ==========================================
+# DYNAMIC PREFIX
+# ==========================================
+
+def get_prefix(bot, message):
+
+    # Default prefix for DMs
+    if message.guild is None:
+        return BOT_PREFIX
+
+    try:
+        return get_server_prefix(message.guild.id)
+
+    except Exception as error:
+        print("[PREFIX] Error:", error)
+        return BOT_PREFIX
 
 
 # ==========================================
@@ -23,10 +39,17 @@ intents.members = True
 # ==========================================
 
 bot = commands.Bot(
-    command_prefix=BOT_PREFIX,
+    command_prefix=get_prefix,
     intents=intents,
     help_command=None
 )
+
+
+# ==========================================
+# BOT STATE
+# ==========================================
+
+bot.maintenance_mode = False
 
 
 # ==========================================
@@ -37,16 +60,18 @@ COGS = [
     "cogs.ai",
     "cogs.dev",
     "cogs.knowledge",
+    "cogs.help",
 ]
 
 
 async def load_cogs():
-    """Load all Souvion AI modules."""
 
     for cog in COGS:
 
         try:
+
             await bot.load_extension(cog)
+
             print(f"[COG] Loaded: {cog}")
 
         except Exception as error:
@@ -81,11 +106,9 @@ async def on_ready():
 @bot.event
 async def on_message(message):
 
-    # Ignore bots
     if message.author.bot:
         return
 
-    # Process normal prefix commands
     await bot.process_commands(message)
 
 
@@ -104,6 +127,7 @@ async def on_command_error(ctx, error):
         await ctx.send(
             "❌ Missing required argument."
         )
+
         return
 
     if isinstance(error, commands.BadArgument):
@@ -111,6 +135,7 @@ async def on_command_error(ctx, error):
         await ctx.send(
             "❌ Invalid argument provided."
         )
+
         return
 
     if isinstance(error, commands.MissingPermissions):
@@ -118,10 +143,11 @@ async def on_command_error(ctx, error):
         await ctx.send(
             "❌ You do not have permission to use this command."
         )
+
         return
 
-    # Ignore failed developer checks
     if isinstance(error, commands.CheckFailure):
+
         return
 
     print("=" * 50)
