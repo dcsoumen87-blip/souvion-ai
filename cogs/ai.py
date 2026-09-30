@@ -58,9 +58,7 @@ if OPENROUTER_API_KEY:
 # ============================================================
 
 GROQ_MODEL = "openai/gpt-oss-20b"
-
 GEMINI_MODEL = "gemini-3.8-flash"
-
 OPENROUTER_MODEL = "openrouter/free"
 
 
@@ -81,219 +79,152 @@ class AICog(commands.Cog):
         self.bot = bot
 
     # ========================================================
-    # RESPONSE LANGUAGE DETECTION
+    # LANGUAGE DETECTION
     # ========================================================
 
     def detect_response_style(self, text):
 
         text = text.strip()
 
-        # Bengali script
-        if re.search(r"[\u0980-\u09FF]", text):
+        if not text:
+            return (
+                "English",
+                "Reply in English."
+            )
+
+        # ----------------------------------------------------
+        # Bengali Script Detection
+        # ----------------------------------------------------
+
+        bengali_chars = len(
+            re.findall(
+                r"[\u0980-\u09FF]",
+                text
+            )
+        )
+
+        latin_chars = len(
+            re.findall(
+                r"[A-Za-z]",
+                text
+            )
+        )
+
+        # If Bengali script is clearly being used,
+        # Bengali script gets priority.
+        if (
+            bengali_chars > 0
+            and (
+                latin_chars == 0
+                or bengali_chars >= latin_chars
+            )
+        ):
 
             return (
                 "Bengali",
-                (
-                    "Reply naturally in Bengali using Bengali "
-                    "script. Do not switch to English or "
-                    "Romanized Bengali."
-                )
+                """
+The current user message is written in Bengali
+script.
+
+You MUST reply in Bengali script.
+
+Do NOT reply in English.
+Do NOT reply in Hinglish.
+Do NOT reply in Banglish.
+Do NOT transliterate the Bengali answer into
+English letters.
+
+Use natural Bengali.
+"""
             )
 
-        lower = text.lower()
-
-        words = set(
-            re.findall(
-                r"[a-zA-Z]+",
-                lower
-            )
-        )
-
-        roman_words = {
-
-            # Bengali / Banglish
-
-            "kothay",
-            "kothai",
-            "kaj",
-            "kore",
-            "koren",
-            "korbo",
-            "korbe",
-            "korche",
-            "kothao",
-            "ache",
-            "achi",
-            "achen",
-            "ki",
-            "ke",
-            "keno",
-            "kano",
-            "kivabe",
-            "kirokom",
-            "amar",
-            "tomar",
-            "apnar",
-            "tumi",
-            "tui",
-            "ami",
-            "oita",
-            "eta",
-            "eita",
-            "ekhane",
-            "okhane",
-            "hobe",
-            "hoyeche",
-            "hoy",
-            "na",
-            "naki",
-            "bolo",
-            "bol",
-            "bolbe",
-            "dao",
-            "dibe",
-            "dibo",
-            "kor",
-            "koro",
-            "korte",
-            "theke",
-            "jonno",
-            "ar",
-            "er",
-            "e",
-            "te",
-            "sathe",
-            "niye",
-            "kon",
-            "konta",
-            "karon",
-            "jodi",
-            "tahole",
-
-            # Hindi / Hinglish
-
-            "kidhar",
-            "kaha",
-            "kaam",
-            "kam",
-            "karta",
-            "karti",
-            "karte",
-            "hai",
-            "hain",
-            "ho",
-            "kya",
-            "kyun",
-            "kaise",
-            "kaisa",
-            "mera",
-            "meri",
-            "mere",
-            "tera",
-            "teri",
-            "tum",
-            "aap",
-            "mujhe",
-            "mujhko",
-            "batao",
-            "bata",
-            "kahan",
-            "kab",
-            "kyu",
-            "kyon",
-            "acha",
-            "accha",
-            "nahi",
-            "nahin",
-            "mein",
-            "wala",
-            "wali",
-            "karna",
-            "krta",
-            "krte",
-            "krti",
-            "se",
-            "ke",
-            "ko"
-        }
-
-        english_words = {
-
-            "what",
-            "where",
-            "when",
-            "why",
-            "how",
-            "who",
-            "which",
-            "does",
-            "do",
-            "did",
-            "is",
-            "are",
-            "was",
-            "were",
-            "work",
-            "works",
-            "working",
-            "developer",
-            "tell",
-            "please",
-            "can",
-            "you",
-            "me",
-            "about",
-            "from",
-            "with",
-            "the",
-            "and",
-            "this",
-            "that",
-            "who",
-            "where",
-            "when",
-            "why"
-        }
-
-        roman_hits = len(
-            words & roman_words
-        )
-
-        english_hits = len(
-            words & english_words
-        )
-
-        if roman_hits > 0:
-
-            return (
-                "Hinglish/Banglish",
-                (
-                    "Reply in the user's Roman-script style. "
-                    "Use natural Hinglish or Banglish written "
-                    "with English letters. Do not use Bengali "
-                    "script. Do not suddenly switch to pure "
-                    "English."
-                )
-            )
-
-        if english_hits > 0:
-
-            return (
-                "English",
-                (
-                    "Reply naturally in English. Do not "
-                    "switch to Bengali, Hindi, Hinglish "
-                    "or Banglish."
-                )
-            )
+        # ----------------------------------------------------
+        # Roman-script language
+        # ----------------------------------------------------
 
         return (
-            "English",
-            "Reply naturally in clear English."
+            "Roman-script natural language",
+            """
+The current user message is written using Latin/
+English letters.
+
+Determine the user's actual language and writing
+style yourself from the COMPLETE current message.
+
+The user may be:
+
+- English
+- Banglish
+- Hinglish
+- Hindi written using English letters
+- Bengali written using English letters
+- Mixed English + Banglish
+- Mixed English + Hinglish
+- Informal Romanized language
+- Slang or abbreviated language
+
+IMPORTANT:
+
+Do NOT use a fixed dictionary or a few individual
+words to decide the language.
+
+Understand the COMPLETE sentence and its meaning.
+
+Then reply in the SAME language and SAME general
+writing style as the current user message.
+
+Examples:
+
+User:
+"How are you?"
+
+Reply:
+"I'm good! How are you?"
+
+User:
+"tumi kemon acho?"
+
+Reply naturally in Banglish.
+
+User:
+"tum kaise ho?"
+
+Reply naturally in Hinglish/Hindi using English
+letters.
+
+User:
+"amar developer ke?"
+
+Reply naturally in Banglish.
+
+User:
+"bro my bot isn't responding"
+
+Reply in English.
+
+User:
+"bhai my bot kaj korche na"
+
+Reply naturally in the same mixed Roman style.
+
+Do not switch to Bengali script unless the user
+is using Bengali script.
+
+Do not switch to formal English just because
+some English words appear in a Banglish/Hinglish
+sentence.
+
+Do not switch to Banglish/Hinglish just because
+a Romanized Bengali/Hindi word appears inside an
+otherwise English sentence.
+
+The COMPLETE current message determines the
+response style.
+"""
         )
 
     # ========================================================
-    # PROMPT
+    # PROMPT BUILDER
     # ========================================================
 
     def build_prompt(
@@ -330,31 +261,55 @@ You are Souvion AI, a professional AI assistant
 for Discord.
 
 ==================================================
-RESPONSE LANGUAGE
+CURRENT USER LANGUAGE
 ==================================================
 
-Detected user language/style:
+Detected script/style:
 {response_style}
 
-MANDATORY LANGUAGE RULE:
+Language instruction:
 
 {language_instruction}
 
-The user's current message is the strongest signal
-for response language.
+==================================================
+LANGUAGE LOCK
+==================================================
+
+The CURRENT USER MESSAGE has the highest priority
+for deciding the response language.
+
+First understand the CURRENT USER MESSAGE.
+
+Then answer in the SAME language and SAME general
+writing style.
+
+Do NOT determine the response language from:
+
+- stored knowledge
+- previous messages
+- developer information
+- system examples
+- the language of another user's message
+
+Stored knowledge can be written in any language.
+Its language MUST NOT affect your response language.
 
 If the user writes Bengali script:
-Reply in Bengali script.
+Answer in Bengali script.
 
 If the user writes English:
-Reply in English.
+Answer in English.
 
-If the user writes Hinglish or Banglish using
-English letters:
-Reply in Hinglish or Banglish using English letters.
+If the user writes Banglish:
+Answer in Banglish using English letters.
 
-The language of stored knowledge must NEVER decide
-the response language.
+If the user writes Hinglish:
+Answer in Hinglish using English letters.
+
+If the user mixes languages:
+Understand the dominant natural language/style
+of the COMPLETE message and respond naturally
+in that same style.
 
 ==================================================
 DEVELOPER INFORMATION
@@ -395,16 +350,10 @@ Discord server.
 
 Use relevant stored knowledge when answering.
 
-IMPORTANT:
-
 Stored knowledge is a FACT SOURCE.
 
 It is NOT a sentence that must be copied
 word-for-word.
-
-You must understand the meaning of stored
-knowledge first, then answer the user's question
-naturally.
 
 ==================================================
 NATURAL KNOWLEDGE ANSWERING
@@ -440,87 +389,61 @@ When answering from stored knowledge:
 11. Do not invent additional information.
 
 ==================================================
-EXAMPLE 1
+KNOWLEDGE EXAMPLES
 ==================================================
 
-Stored knowledge:
+Example 1:
 
+Stored knowledge:
 "your developer name is Soumen"
 
-User asks:
-
+User:
 "what is your developer name?"
 
-Correct answer:
-
+Natural answer:
 "My developer name is Soumen."
 
-NOT:
-
+Do NOT simply copy:
 "your developer name is Soumen"
 
-==================================================
-EXAMPLE 2
-==================================================
+--------------------------------------------------
+
+Example 2:
 
 Stored knowledge:
-
 "server owner is Rahul"
 
-User asks:
-
+User:
 "who owns this server?"
 
-Correct answer:
-
+Natural answer:
 "The server owner is Rahul."
 
-NOT:
+--------------------------------------------------
 
-"server owner is Rahul"
-
-==================================================
-EXAMPLE 3
-==================================================
+Example 3:
 
 Stored knowledge:
-
 "ami tomar developer ar bondhu"
 
-User asks:
-
+User:
 "who is your developer's friend?"
 
 Natural answer:
-
 "You are my developer's friend."
 
-==================================================
-EXAMPLE 4
-==================================================
+--------------------------------------------------
+
+Example 4:
 
 Stored knowledge:
-
 "Soumen works at Quantum Gaming"
 
-User asks:
-
+User:
 "Where does Soumen work?"
 
 Natural answer:
-
 "Soumen works at Quantum Gaming."
-
-==================================================
-IMPORTANT
-==================================================
-
-The examples above demonstrate the behavior.
-
-Always use the actual stored facts when answering.
-
-Do not blindly use the example answers if they conflict
-with the actual stored knowledge.
 
 ==================================================
 KNOWLEDGE PRIORITY
@@ -546,23 +469,16 @@ GENERAL RULES
 
 1. Be helpful, friendly and natural.
 
-2. Support:
+2. Support Bengali, English, Banglish and Hinglish.
 
-   - Bengali
-   - English
-   - Hinglish
-   - Banglish
+3. Match the user's current language and style.
 
-3. Match the user's current language,
-   script and writing style.
-
-4. Understand Bengali written using
-   English letters.
+4. Understand Romanized Bengali and Hindi.
 
 5. Keep normal answers reasonably concise.
 
-6. Do not claim to remember previous
-   conversations.
+6. Do not claim to remember conversations that
+   are not available in the knowledge system.
 
 7. Never reveal:
 
@@ -584,26 +500,26 @@ AVAILABLE KNOWLEDGE
 {knowledge_text}
 
 ==================================================
-USER QUESTION
+CURRENT USER QUESTION
 ==================================================
 
 {user_question}
 
 ==================================================
-FINAL ANSWER INSTRUCTION
+FINAL ANSWER
 ==================================================
 
-Use the available knowledge when relevant.
+Understand the CURRENT USER QUESTION first.
 
-Understand the knowledge first.
+Determine its actual language and writing style.
 
-Then answer the user's question naturally.
+Use relevant knowledge if available.
 
-Do NOT copy stored knowledge word-for-word unless
-the user explicitly asks for the exact stored text.
+Then answer naturally in the SAME language and
+general writing style as the CURRENT USER QUESTION.
 
-Answer directly in the same language and writing
-style as the user's question.
+Never copy stored knowledge word-for-word unless
+the user explicitly requests the exact stored text.
 """
 
     # ========================================================
@@ -845,7 +761,6 @@ style as the user's question.
     ):
 
         if not message.guild:
-
             return False
 
         return (
@@ -866,7 +781,7 @@ style as the user's question.
     ):
 
         # ====================================================
-        # GLOBAL
+        # GLOBAL KNOWLEDGE
         # ====================================================
 
         if scope == "global":
@@ -943,7 +858,7 @@ style as the user's question.
             return True
 
         # ====================================================
-        # SERVER
+        # SERVER KNOWLEDGE
         # ====================================================
 
         if scope == "server":
@@ -1101,7 +1016,7 @@ style as the user's question.
         )
 
     # ========================================================
-    # RATE LIMIT
+    # RATE LIMIT DETECTION
     # ========================================================
 
     def is_rate_limit(
@@ -1123,7 +1038,7 @@ style as the user's question.
         )
 
     # ========================================================
-    # TEMPORARY ERROR
+    # TEMPORARY ERROR DETECTION
     # ========================================================
 
     def is_temporary_error(
@@ -1174,11 +1089,13 @@ style as the user's question.
                     "role": "system",
                     "content": (
                         "You are Souvion AI. "
-                        "Always reply in the same language "
-                        "and writing style as the user's latest "
-                        "message. Use stored knowledge as facts "
-                        "and answer naturally. Never blindly "
-                        "copy stored knowledge sentences."
+                        "Understand the complete current "
+                        "user message before answering. "
+                        "Reply in the same language and "
+                        "general writing style as the "
+                        "current user message. Do not let "
+                        "stored knowledge language affect "
+                        "the response language."
                     )
                 },
                 {
@@ -1276,11 +1193,13 @@ style as the user's question.
                     "role": "system",
                     "content": (
                         "You are Souvion AI. "
-                        "Always reply in the same language "
-                        "and writing style as the user's latest "
-                        "message. Use stored knowledge as facts "
-                        "and answer naturally. Never blindly "
-                        "copy stored knowledge sentences."
+                        "Understand the complete current "
+                        "user message before answering. "
+                        "Reply in the same language and "
+                        "general writing style as the "
+                        "current user message. Do not let "
+                        "stored knowledge language affect "
+                        "the response language."
                     )
                 },
                 {
@@ -1403,6 +1322,7 @@ style as the user's question.
 
         async with AI_SEMAPHORE:
 
+            # Groq
             answer = await self.try_provider(
                 "Groq",
                 self.generate_groq,
@@ -1412,6 +1332,7 @@ style as the user's question.
             if answer:
                 return answer
 
+            # Gemini
             answer = await self.try_provider(
                 "Gemini",
                 self.generate_gemini,
@@ -1421,6 +1342,7 @@ style as the user's question.
             if answer:
                 return answer
 
+            # OpenRouter
             answer = await self.try_provider(
                 "OpenRouter FREE",
                 self.generate_openrouter,
@@ -1461,15 +1383,23 @@ style as the user's question.
 
         if mention_developer:
 
-            allowed_mentions = discord.AllowedMentions(
-                users=True
+            allowed_mentions = (
+                discord.AllowedMentions(
+                    users=True
+                )
             )
 
         else:
 
-            allowed_mentions = discord.AllowedMentions(
-                users=False
+            allowed_mentions = (
+                discord.AllowedMentions(
+                    users=False
+                )
             )
+
+        # ----------------------------------------------------
+        # Short response
+        # ----------------------------------------------------
 
         if len(answer) <= MAX_LENGTH:
 
@@ -1481,6 +1411,10 @@ style as the user's question.
 
             return
 
+        # ----------------------------------------------------
+        # Long response
+        # ----------------------------------------------------
+
         remaining = answer
 
         first_message = True
@@ -1491,8 +1425,8 @@ style as the user's question.
 
             if len(remaining) > MAX_LENGTH:
 
-                newline_position = chunk.rfind(
-                    "\n"
+                newline_position = (
+                    chunk.rfind("\n")
                 )
 
                 if newline_position > 500:
@@ -1537,10 +1471,14 @@ style as the user's question.
         message
     ):
 
+        # Ignore bots
         if message.author.bot:
             return
 
+        # ----------------------------------------------------
         # Maintenance mode
+        # ----------------------------------------------------
+
         if getattr(
             self.bot,
             "maintenance_mode",
@@ -1550,14 +1488,24 @@ style as the user's question.
             if message.author.id != DEV_USER_ID:
                 return
 
+        # ----------------------------------------------------
+        # Bot ready
+        # ----------------------------------------------------
+
         if not self.bot.user:
             return
 
+        # ----------------------------------------------------
         # Bot mention required
+        # ----------------------------------------------------
+
         if self.bot.user not in message.mentions:
             return
 
+        # ----------------------------------------------------
         # Remove bot mention
+        # ----------------------------------------------------
+
         question = message.content
 
         question = question.replace(
@@ -1571,6 +1519,10 @@ style as the user's question.
         )
 
         question = question.strip()
+
+        # ----------------------------------------------------
+        # Empty question
+        # ----------------------------------------------------
 
         if not question:
 
@@ -1603,7 +1555,7 @@ style as the user's question.
                 return
 
         # ----------------------------------------------------
-        # Guild
+        # Guild ID
         # ----------------------------------------------------
 
         guild_id = None
@@ -1622,7 +1574,7 @@ style as the user's question.
         )
 
         # ----------------------------------------------------
-        # Generate
+        # Generate response
         # ----------------------------------------------------
 
         try:
