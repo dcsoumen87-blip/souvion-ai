@@ -1,9 +1,11 @@
 import os
 import json
+import asyncio
 import discord
 from discord.ext import commands
 
 from config import DEV_USER_ID, BOT_PREFIX
+from services.github_storage import github_storage
 
 
 # ==========================================
@@ -16,6 +18,16 @@ KNOWLEDGE_FILE = os.path.join(
     DATA_DIR,
     "knowledge.json"
 )
+
+
+# ==========================================
+# DEFAULT DATA
+# ==========================================
+
+DEFAULT_KNOWLEDGE = {
+    "_global": {},
+    "_prefixes": {}
+}
 
 
 # ==========================================
@@ -38,10 +50,7 @@ def ensure_data_file():
         ) as file:
 
             json.dump(
-                {
-                    "_global": {},
-                    "_prefixes": {}
-                },
+                DEFAULT_KNOWLEDGE,
                 file,
                 indent=4,
                 ensure_ascii=False
@@ -63,10 +72,7 @@ def load_knowledge():
             data = json.load(file)
 
             if not isinstance(data, dict):
-                return {
-                    "_global": {},
-                    "_prefixes": {}
-                }
+                return DEFAULT_KNOWLEDGE.copy()
 
             if "_global" not in data:
                 data["_global"] = {}
@@ -118,6 +124,131 @@ knowledge = load_knowledge()
 
 
 # ==========================================
+# GITHUB SYNC
+# ==========================================
+
+github_sync_lock = asyncio.Lock()
+
+
+async def sync_to_github(
+    commit_message="Update Souvion AI knowledge"
+):
+
+    if not github_storage.enabled:
+
+        print(
+            "[GITHUB] Storage disabled. "
+            "Using local knowledge only."
+        )
+
+        return False
+
+    async with github_sync_lock:
+
+        try:
+
+            success = await github_storage.save_knowledge(
+                knowledge,
+                commit_message=commit_message
+            )
+
+            if success:
+
+                print(
+                    "[GITHUB] Knowledge synchronized."
+                )
+
+            else:
+
+                print(
+                    "[GITHUB] Knowledge synchronization failed."
+                )
+
+            return success
+
+        except Exception as error:
+
+            print(
+                "[GITHUB] Sync error:",
+                error
+            )
+
+            return False
+
+
+async def persist_knowledge(
+    commit_message="Update Souvion AI knowledge"
+):
+
+    if not save_knowledge(knowledge):
+
+        return False
+
+    return await sync_to_github(
+        commit_message
+    )
+
+
+async def load_from_github():
+
+    global knowledge
+
+    if not github_storage.enabled:
+
+        print(
+            "[GITHUB] Storage disabled. "
+            "Keeping local knowledge."
+        )
+
+        return False
+
+    try:
+
+        remote_data = await github_storage.load_knowledge()
+
+        if remote_data is None:
+
+            print(
+                "[GITHUB] No remote knowledge found."
+            )
+
+            return False
+
+        if not isinstance(remote_data, dict):
+
+            print(
+                "[GITHUB] Invalid remote knowledge."
+            )
+
+            return False
+
+        if "_global" not in remote_data:
+            remote_data["_global"] = {}
+
+        if "_prefixes" not in remote_data:
+            remote_data["_prefixes"] = {}
+
+        knowledge = remote_data
+
+        save_knowledge(knowledge)
+
+        print(
+            "[GITHUB] Knowledge loaded successfully."
+        )
+
+        return True
+
+    except Exception as error:
+
+        print(
+            "[GITHUB] Remote load error:",
+            error
+        )
+
+        return False
+
+
+# ==========================================
 # PREFIX SYSTEM
 # ==========================================
 
@@ -138,11 +269,15 @@ def get_server_prefix(guild_id):
     return prefix
 
 
-def set_server_prefix(guild_id, prefix):
+def set_server_prefix(
+    guild_id,
+    prefix
+):
 
     guild_id = str(guild_id)
 
     if "_prefixes" not in knowledge:
+
         knowledge["_prefixes"] = {}
 
     knowledge["_prefixes"][guild_id] = prefix
@@ -181,6 +316,77 @@ def get_global_knowledge_text():
     return "\n\n".join(lines)
 
 
+def add_global_knowledge(
+    key,
+    value
+):
+
+    key = key.lower().strip()
+
+    if not key:
+        return False, "Invalid key."
+
+    global_data = knowledge.setdefault(
+        "_global",
+        {}
+    )
+
+    if key in global_data:
+
+        return False, (
+            f"Global knowledge `{key}` already exists."
+        )
+
+    global_data[key] = value
+
+    return True, key
+
+
+def update_global_knowledge(
+    key,
+    value
+):
+
+    key = key.lower().strip()
+
+    global_data = knowledge.setdefault(
+        "_global",
+        {}
+    )
+
+    if key not in global_data:
+
+        return False, (
+            f"Global knowledge `{key}` does not exist."
+        )
+
+    global_data[key] = value
+
+    return True, key
+
+
+def delete_global_knowledge(
+    key
+):
+
+    key = key.lower().strip()
+
+    global_data = knowledge.setdefault(
+        "_global",
+        {}
+    )
+
+    if key not in global_data:
+
+        return False, (
+            f"Global knowledge `{key}` was not found."
+        )
+
+    del global_data[key]
+
+    return True, key
+
+
 # ==========================================
 # SERVER KNOWLEDGE
 # ==========================================
@@ -196,7 +402,9 @@ def get_guild_knowledge(guild_id):
     return knowledge[guild_id]
 
 
-def get_knowledge_text(guild_id=None):
+def get_knowledge_text(
+    guild_id=None
+):
 
     global_data = get_global_knowledge()
 
@@ -230,6 +438,77 @@ def get_knowledge_text(guild_id=None):
     return "\n\n".join(lines)
 
 
+def add_server_knowledge(
+    guild_id,
+    key,
+    value
+):
+
+    guild_data = get_guild_knowledge(
+        guild_id
+    )
+
+    key = key.lower().strip()
+
+    if not key:
+        return False, "Invalid key."
+
+    if key in guild_data:
+
+        return False, (
+            f"Server knowledge `{key}` already exists."
+        )
+
+    guild_data[key] = value
+
+    return True, key
+
+
+def update_server_knowledge(
+    guild_id,
+    key,
+    value
+):
+
+    guild_data = get_guild_knowledge(
+        guild_id
+    )
+
+    key = key.lower().strip()
+
+    if key not in guild_data:
+
+        return False, (
+            f"Server knowledge `{key}` does not exist."
+        )
+
+    guild_data[key] = value
+
+    return True, key
+
+
+def delete_server_knowledge(
+    guild_id,
+    key
+):
+
+    guild_data = get_guild_knowledge(
+        guild_id
+    )
+
+    key = key.lower().strip()
+
+    if key not in guild_data:
+
+        return False, (
+            f"Server knowledge `{key}` was not found."
+        )
+
+    del guild_data[key]
+
+    return True, key
+
+
 # ==========================================
 # PERMISSION SYSTEM
 # ==========================================
@@ -244,6 +523,7 @@ def is_developer(ctx):
 def is_server_admin(ctx):
 
     if ctx.guild is None:
+
         return False
 
     return (
@@ -265,9 +545,20 @@ def can_manage_server_knowledge(ctx):
 
 class KnowledgeCog(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(
+        self,
+        bot
+    ):
 
         self.bot = bot
+
+    async def cog_load(self):
+
+        print(
+            "[KNOWLEDGE] Loading remote knowledge..."
+        )
+
+        await load_from_github()
 
 
     # ======================================
@@ -322,10 +613,15 @@ class KnowledgeCog(commands.Cog):
 
             return
 
-        if not set_server_prefix(
-            ctx.guild.id,
-            new_prefix
-        ):
+        knowledge["_prefixes"][
+            str(ctx.guild.id)
+        ] = new_prefix
+
+        success = await persist_knowledge(
+            "Update server prefix"
+        )
+
+        if not success:
 
             await ctx.send(
                 "❌ Failed to save the server prefix."
@@ -363,34 +659,36 @@ class KnowledgeCog(commands.Cog):
         if not can_manage_server_knowledge(ctx):
             return
 
-        guild_data = get_guild_knowledge(
-            ctx.guild.id
+        success, result = add_server_knowledge(
+            ctx.guild.id,
+            key,
+            value
         )
 
-        key = key.lower().strip()
-
-        if key in guild_data:
+        if not success:
 
             await ctx.send(
-                f"❌ `{key}` already exists.\n"
-                f"Use `aiupdate {key} <information>` to update it."
+                f"❌ {result}"
             )
 
             return
 
-        guild_data[key] = value
+        saved = await persist_knowledge(
+            f"Add server knowledge: {result}"
+        )
 
-        if not save_knowledge(knowledge):
+        if not saved:
 
             await ctx.send(
-                "❌ Failed to save the knowledge."
+                "❌ Knowledge changed locally, "
+                "but GitHub synchronization failed."
             )
 
             return
 
         await ctx.send(
             f"✅ **Knowledge Added**\n\n"
-            f"**Key:** `{key}`\n"
+            f"**Key:** `{result}`\n"
             f"**Information:** {value}"
         )
 
@@ -419,33 +717,36 @@ class KnowledgeCog(commands.Cog):
         if not can_manage_server_knowledge(ctx):
             return
 
-        guild_data = get_guild_knowledge(
-            ctx.guild.id
+        success, result = update_server_knowledge(
+            ctx.guild.id,
+            key,
+            value
         )
 
-        key = key.lower().strip()
-
-        if key not in guild_data:
+        if not success:
 
             await ctx.send(
-                f"❌ Knowledge `{key}` does not exist."
+                f"❌ {result}"
             )
 
             return
 
-        guild_data[key] = value
+        saved = await persist_knowledge(
+            f"Update server knowledge: {result}"
+        )
 
-        if not save_knowledge(knowledge):
+        if not saved:
 
             await ctx.send(
-                "❌ Failed to save the knowledge."
+                "❌ Knowledge changed locally, "
+                "but GitHub synchronization failed."
             )
 
             return
 
         await ctx.send(
             f"✅ **Knowledge Updated**\n\n"
-            f"**Key:** `{key}`\n"
+            f"**Key:** `{result}`\n"
             f"**Information:** {value}"
         )
 
@@ -472,32 +773,34 @@ class KnowledgeCog(commands.Cog):
         if not can_manage_server_knowledge(ctx):
             return
 
-        guild_data = get_guild_knowledge(
-            ctx.guild.id
+        success, result = delete_server_knowledge(
+            ctx.guild.id,
+            key
         )
 
-        key = key.lower().strip()
-
-        if key not in guild_data:
+        if not success:
 
             await ctx.send(
-                f"❌ Knowledge `{key}` was not found."
+                f"❌ {result}"
             )
 
             return
 
-        del guild_data[key]
+        saved = await persist_knowledge(
+            f"Delete server knowledge: {result}"
+        )
 
-        if not save_knowledge(knowledge):
+        if not saved:
 
             await ctx.send(
-                "❌ Failed to save the knowledge."
+                "❌ Knowledge changed locally, "
+                "but GitHub synchronization failed."
             )
 
             return
 
         await ctx.send(
-            f"🗑️ Knowledge `{key}` has been deleted."
+            f"🗑️ Knowledge `{result}` has been deleted."
         )
 
 
@@ -506,7 +809,10 @@ class KnowledgeCog(commands.Cog):
     # ======================================
 
     @commands.command(name="ailist")
-    async def ailist(self, ctx):
+    async def ailist(
+        self,
+        ctx
+    ):
 
         if ctx.guild is None:
 
@@ -607,7 +913,9 @@ class KnowledgeCog(commands.Cog):
 
         embed = discord.Embed(
             title="🔎 Knowledge Search",
-            description="\n\n".join(results)[:4000],
+            description="\n\n".join(
+                results
+            )[:4000],
             color=discord.Color.green()
         )
 
@@ -621,7 +929,10 @@ class KnowledgeCog(commands.Cog):
     # ======================================
 
     @commands.command(name="aiclear")
-    async def aiclear(self, ctx):
+    async def aiclear(
+        self,
+        ctx
+    ):
 
         if ctx.guild is None:
 
@@ -648,10 +959,15 @@ class KnowledgeCog(commands.Cog):
 
         knowledge[guild_id] = {}
 
-        if not save_knowledge(knowledge):
+        saved = await persist_knowledge(
+            f"Clear server knowledge: {guild_id}"
+        )
+
+        if not saved:
 
             await ctx.send(
-                "❌ Failed to clear the knowledge."
+                "❌ Knowledge cleared locally, "
+                "but GitHub synchronization failed."
             )
 
             return
