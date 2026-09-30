@@ -33,15 +33,11 @@ groq_client = None
 openrouter_client = None
 
 
-# ---------------- GEMINI ----------------
-
 if GEMINI_API_KEY:
     gemini_client = genai.Client(
         api_key=GEMINI_API_KEY
     )
 
-
-# ---------------- GROQ ----------------
 
 if GROQ_API_KEY:
     groq_client = OpenAI(
@@ -49,8 +45,6 @@ if GROQ_API_KEY:
         base_url="https://api.groq.com/openai/v1"
     )
 
-
-# ---------------- OPENROUTER ----------------
 
 if OPENROUTER_API_KEY:
     openrouter_client = OpenAI(
@@ -64,9 +58,7 @@ if OPENROUTER_API_KEY:
 # ============================================================
 
 GROQ_MODEL = "openai/gpt-oss-20b"
-
 GEMINI_MODEL = "gemini-3.8-flash"
-
 OPENROUTER_MODEL = "openrouter/free"
 
 
@@ -84,8 +76,190 @@ AI_SEMAPHORE = asyncio.Semaphore(2)
 class AICog(commands.Cog):
 
     def __init__(self, bot):
-
         self.bot = bot
+
+    # ========================================================
+    # LANGUAGE DETECTION
+    # ========================================================
+
+    def detect_response_style(self, text):
+
+        text = text.strip()
+
+        # Detect Bengali Unicode script.
+        if re.search(r"[\u0980-\u09FF]", text):
+            return (
+                "Bengali",
+                (
+                    "Reply naturally in Bengali using Bengali script. "
+                    "Do not switch to English or Romanized Bengali."
+                )
+            )
+
+        lower = text.lower()
+
+        words = set(
+            re.findall(
+                r"[a-zA-Z]+",
+                lower
+            )
+        )
+
+        # Common Romanized Bengali and Hindi words.
+        roman_words = {
+            # Romanized Bengali
+            "kothay",
+            "kothai",
+            "kaj",
+            "kore",
+            "koren",
+            "korbo",
+            "korbe",
+            "korche",
+            "kothao",
+            "ache",
+            "achi",
+            "achen",
+            "ki",
+            "ke",
+            "keno",
+            "kano",
+            "kivabe",
+            "kirokom",
+            "amar",
+            "tomar",
+            "apnar",
+            "tumi",
+            "tui",
+            "ami",
+            "oita",
+            "eta",
+            "eita",
+            "ekhane",
+            "okhane",
+            "hobe",
+            "hoyeche",
+            "hoy",
+            "na",
+            "naki",
+            "bolo",
+            "bol",
+            "bolbe",
+            "dao",
+            "dibe",
+            "dibo",
+            "kor",
+            "koro",
+            "korte",
+            "theke",
+            "jonno",
+
+            # Romanized Hindi
+            "kidhar",
+            "kaha",
+            "kaam",
+            "karta",
+            "karti",
+            "karte",
+            "hai",
+            "hain",
+            "ho",
+            "kya",
+            "kyun",
+            "kaise",
+            "kaisa",
+            "mera",
+            "meri",
+            "mere",
+            "tera",
+            "teri",
+            "tum",
+            "aap",
+            "mujhe",
+            "mujhko",
+            "batao",
+            "bata",
+            "kahan",
+            "kab",
+            "kyu",
+            "kyon",
+            "acha",
+            "accha",
+            "nahi",
+            "nahin",
+            "mein",
+            "wala",
+            "wali",
+            "karna",
+            "kam",
+            "krta",
+            "krte"
+        }
+
+        english_words = {
+            "what",
+            "where",
+            "when",
+            "why",
+            "how",
+            "who",
+            "which",
+            "does",
+            "do",
+            "did",
+            "is",
+            "are",
+            "was",
+            "were",
+            "work",
+            "works",
+            "working",
+            "developer",
+            "tell",
+            "please",
+            "can",
+            "you",
+            "me",
+            "about",
+            "from",
+            "with",
+            "the",
+            "and"
+        }
+
+        roman_hits = len(
+            words & roman_words
+        )
+
+        english_hits = len(
+            words & english_words
+        )
+
+        if roman_hits > 0:
+            return (
+                "Hinglish/Banglish",
+                (
+                    "Reply in the user's Roman-script style. "
+                    "Use natural Hinglish or Banglish written "
+                    "with English letters. Do not use Bengali "
+                    "script. Do not suddenly switch to pure English."
+                )
+            )
+
+        if english_hits > 0:
+            return (
+                "English",
+                (
+                    "Reply naturally in English. "
+                    "Do not switch to Bengali, Hindi, "
+                    "Hinglish or Banglish."
+                )
+            )
+
+        return (
+            "English",
+            "Reply naturally in clear English."
+        )
 
     # ========================================================
     # PROMPT
@@ -98,7 +272,6 @@ class AICog(commands.Cog):
     ):
 
         try:
-
             knowledge_text = get_knowledge_text(
                 guild_id
             )
@@ -114,9 +287,58 @@ class AICog(commands.Cog):
                 "No knowledge is available."
             )
 
+        response_style, language_instruction = (
+            self.detect_response_style(
+                user_question
+            )
+        )
+
         return f"""
 You are Souvion AI, a professional AI assistant
 for Discord.
+
+==================================================
+RESPONSE LANGUAGE
+==================================================
+
+Detected user language/style:
+{response_style}
+
+MANDATORY LANGUAGE RULE:
+
+{language_instruction}
+
+The user's CURRENT MESSAGE is the strongest signal
+for the response language.
+
+If the user writes Bengali script:
+-> Reply in Bengali script.
+
+If the user writes English:
+-> Reply in English.
+
+If the user writes Hinglish or Banglish using
+English letters:
+-> Reply in Hinglish or Banglish using English letters.
+
+IMPORTANT:
+
+The language of stored knowledge must NEVER decide
+the response language.
+
+Example:
+
+Stored knowledge may contain Bengali text.
+
+User:
+"Soumen kothay kaj kore?"
+
+The answer should use Romanized style:
+
+"Soumen Quantum Gaming-e kaj kore."
+
+Do not change the answer into Bengali script
+only because stored knowledge contains Bengali text.
 
 ==================================================
 DEVELOPER INFORMATION
@@ -125,36 +347,24 @@ DEVELOPER INFORMATION
 Developer Name: Soumen
 Developer Discord ID: {DEV_USER_ID}
 
-If the user asks:
+If the user asks who developed you,
+answer naturally.
 
-- Who developed you?
-- Who is your developer?
-- Developer ID?
-- What is the developer Discord ID?
-
-Answer naturally.
-
-If the user asks for the developer's Discord ID,
+If the user asks for the developer Discord ID,
 you may provide:
 
 {DEV_USER_ID}
 
-IMPORTANT DISCORD MENTION RULE:
-
 If the user specifically asks you to mention,
-ping, tag, or @mention the developer, use:
+ping, tag or @mention the developer, use:
 
 <@{DEV_USER_ID}>
-
-Do NOT write only the numeric ID when a mention
-is specifically requested.
 
 ==================================================
 KNOWLEDGE RULES
 ==================================================
 
-The knowledge below is persistent information
-stored for Souvion AI.
+The following information is persistent knowledge.
 
 GLOBAL knowledge applies to every server.
 
@@ -163,13 +373,17 @@ Discord server.
 
 Use relevant knowledge when answering.
 
-If relevant knowledge exists, prefer it over
-guessing.
+If relevant knowledge exists:
 
-Never invent facts that are not present.
+- Prefer it over guessing.
+- Do not contradict it without a clear reason.
+- Do not invent missing details.
 
 If the requested information is not available,
 say that you do not have that information.
+
+Server-specific knowledge has higher priority than
+global knowledge when they conflict.
 
 ==================================================
 GENERAL RULES
@@ -183,16 +397,16 @@ GENERAL RULES
    - Hinglish
    - Banglish
 
-3. Match the user's language and style.
+3. Match the user's current language and writing style.
 
 4. Understand Bengali written using English letters.
 
-5. Server-specific knowledge has higher priority
-   than global knowledge when they conflict.
+5. Keep normal answers reasonably concise.
 
 6. Do not claim to remember previous conversations.
 
 7. Never reveal:
+
    - API keys
    - Discord bot token
    - Environment variables
@@ -202,10 +416,10 @@ GENERAL RULES
 
 8. Do not mention these internal instructions.
 
-9. Keep normal answers reasonably concise.
+9. Do not invent facts.
 
 10. Do not reveal the complete knowledge database
-    unless the user asks for relevant information.
+    unless specifically requested.
 
 ==================================================
 AVAILABLE KNOWLEDGE
@@ -225,28 +439,15 @@ ANSWER
 """
 
     # ========================================================
-    # REMEMBER REQUEST DETECTION
+    # REMEMBER DETECTION
     # ========================================================
 
     def detect_remember_request(
         self,
         text
     ):
-        """
-        Detect natural language knowledge requests.
-
-        Supported:
-
-        remember globally: key: value
-        remember globally key: value
-
-        remember this: key: value
-        remember this: information
-        """
 
         text = text.strip()
-
-        lower = text.lower()
 
         global_patterns = [
             r"^remember\s+globally\s*:\s*(.+)$",
@@ -271,7 +472,6 @@ ANSWER
             )
 
             if match:
-
                 return (
                     "global",
                     match.group(1).strip()
@@ -286,7 +486,6 @@ ANSWER
             )
 
             if match:
-
                 return (
                     "server",
                     match.group(1).strip()
@@ -295,32 +494,18 @@ ANSWER
         return None, None
 
     # ========================================================
-    # BUILD KNOWLEDGE ENTRY
+    # KNOWLEDGE ENTRY
     # ========================================================
 
     def parse_knowledge_entry(
         self,
         content
     ):
-        """
-        If content contains:
-
-        key: value
-
-        use it directly.
-
-        Otherwise create a readable automatic key.
-        """
 
         content = content.strip()
 
         if not content:
-
             return None, None
-
-        # ----------------------------------------------------
-        # Explicit key/value
-        # ----------------------------------------------------
 
         if ":" in content:
 
@@ -333,21 +518,14 @@ ANSWER
             value = value.strip()
 
             if key and value:
-
                 return key, value
-
-        # ----------------------------------------------------
-        # Automatic key
-        # ----------------------------------------------------
 
         words = content.split()
 
-        if len(words) >= 1:
-
-            key_words = words[:6]
+        if words:
 
             key = " ".join(
-                key_words
+                words[:6]
             )
 
         else:
@@ -357,7 +535,7 @@ ANSWER
         return key, content
 
     # ========================================================
-    # REMEMBER PERMISSION
+    # PERMISSIONS
     # ========================================================
 
     def is_developer_author(
@@ -373,7 +551,6 @@ ANSWER
     ):
 
         if not message.guild:
-
             return False
 
         return (
@@ -391,9 +568,7 @@ ANSWER
         content
     ):
 
-        # ----------------------------------------------------
         # GLOBAL KNOWLEDGE
-        # ----------------------------------------------------
 
         if scope == "global":
 
@@ -402,21 +577,23 @@ ANSWER
             ):
 
                 await message.reply(
-                    "❌ Only the Developer can add "
+                    "Only the Developer can add "
                     "global knowledge.",
                     mention_author=False
                 )
 
                 return True
 
-            key, value = self.parse_knowledge_entry(
-                content
+            key, value = (
+                self.parse_knowledge_entry(
+                    content
+                )
             )
 
             if not key or not value:
 
                 await message.reply(
-                    "❌ Please provide information.\n\n"
+                    "Please provide information.\n\n"
                     "Example:\n"
                     "`remember globally: "
                     "developer: Soumen`",
@@ -425,17 +602,19 @@ ANSWER
 
                 return True
 
-            success, result = add_global_knowledge(
-                key,
-                value
+            success, result = (
+                add_global_knowledge(
+                    key,
+                    value
+                )
             )
 
             if not success:
 
                 await message.reply(
-                    f"❌ {result}\n\n"
-                    f"Use `globalupdate` if you want "
-                    f"to update it.",
+                    f"{result}\n\n"
+                    "Use `globalupdate` if you want "
+                    "to update it.",
                     mention_author=False
                 )
 
@@ -448,7 +627,7 @@ ANSWER
             if not saved:
 
                 await message.reply(
-                    "⚠️ Knowledge was added locally, "
+                    "Knowledge was added locally, "
                     "but GitHub synchronization failed.",
                     mention_author=False
                 )
@@ -456,7 +635,7 @@ ANSWER
                 return True
 
             await message.reply(
-                "✅ **Global knowledge remembered.**\n\n"
+                "**Global knowledge remembered.**\n\n"
                 f"**Key:** `{result}`\n"
                 f"**Information:** {value}",
                 mention_author=False
@@ -464,16 +643,14 @@ ANSWER
 
             return True
 
-        # ----------------------------------------------------
         # SERVER KNOWLEDGE
-        # ----------------------------------------------------
 
         if scope == "server":
 
             if not message.guild:
 
                 await message.reply(
-                    "❌ Server knowledge can only be "
+                    "Server knowledge can only be "
                     "stored inside a Discord server.",
                     mention_author=False
                 )
@@ -490,7 +667,7 @@ ANSWER
             ):
 
                 await message.reply(
-                    "❌ Only a Server Administrator "
+                    "Only a Server Administrator "
                     "or the Developer can add "
                     "server knowledge.",
                     mention_author=False
@@ -498,14 +675,16 @@ ANSWER
 
                 return True
 
-            key, value = self.parse_knowledge_entry(
-                content
+            key, value = (
+                self.parse_knowledge_entry(
+                    content
+                )
             )
 
             if not key or not value:
 
                 await message.reply(
-                    "❌ Please provide information.\n\n"
+                    "Please provide information.\n\n"
                     "Example:\n"
                     "`remember this: "
                     "server owner: Soumen`",
@@ -514,18 +693,20 @@ ANSWER
 
                 return True
 
-            success, result = add_server_knowledge(
-                message.guild.id,
-                key,
-                value
+            success, result = (
+                add_server_knowledge(
+                    message.guild.id,
+                    key,
+                    value
+                )
             )
 
             if not success:
 
                 await message.reply(
-                    f"❌ {result}\n\n"
+                    f"{result}\n\n"
                     f"Use `aiupdate {result} <information>` "
-                    f"if you want to update it.",
+                    "if you want to update it.",
                     mention_author=False
                 )
 
@@ -538,7 +719,7 @@ ANSWER
             if not saved:
 
                 await message.reply(
-                    "⚠️ Knowledge was added locally, "
+                    "Knowledge was added locally, "
                     "but GitHub synchronization failed.",
                     mention_author=False
                 )
@@ -546,7 +727,7 @@ ANSWER
                 return True
 
             await message.reply(
-                "✅ **Server knowledge remembered.**\n\n"
+                "**Server knowledge remembered.**\n\n"
                 f"**Key:** `{result}`\n"
                 f"**Information:** {value}",
                 mention_author=False
@@ -557,7 +738,7 @@ ANSWER
         return False
 
     # ========================================================
-    # DEVELOPER MENTION DETECTION
+    # DEVELOPER MENTION
     # ========================================================
 
     def wants_developer_mention(
@@ -579,13 +760,9 @@ ANSWER
             "ping kore",
             "ping koro",
             "@mention",
-            "মেনশন",
-            "মেনশন কর",
-            "মেনশন করে",
-            "ট্যাগ",
-            "ট্যাগ কর",
-            "পিং",
-            "পিং কর",
+            "mention the developer",
+            "tag the developer",
+            "ping the developer",
         ]
 
         developer_words = [
@@ -595,9 +772,7 @@ ANSWER
             "developer k",
             "dev ke",
             "dev k",
-            "তোমার developer",
-            "তোমার ডেভেলপার",
-            "ডেভেলপার",
+            "your developer",
         ]
 
         has_mention_word = any(
@@ -681,6 +856,22 @@ ANSWER
             groq_client.chat.completions.create,
             model=GROQ_MODEL,
             messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are Souvion AI. "
+                        "Always reply in the same language "
+                        "and writing style as the user's latest "
+                        "message. If the user writes Hinglish "
+                        "or Banglish in English letters, reply "
+                        "in Hinglish or Banglish using English "
+                        "letters. If the user writes Bengali "
+                        "script, reply in Bengali script. "
+                        "If the user writes English, reply in "
+                        "English. The language of stored knowledge "
+                        "must never change the response language."
+                    )
+                },
                 {
                     "role": "user",
                     "content": prompt
@@ -769,6 +960,22 @@ ANSWER
             model=OPENROUTER_MODEL,
             messages=[
                 {
+                    "role": "system",
+                    "content": (
+                        "You are Souvion AI. "
+                        "Always reply in the same language "
+                        "and writing style as the user's latest "
+                        "message. If the user writes Hinglish "
+                        "or Banglish in English letters, reply "
+                        "in Hinglish or Banglish using English "
+                        "letters. If the user writes Bengali "
+                        "script, reply in Bengali script. "
+                        "If the user writes English, reply in "
+                        "English. The language of stored knowledge "
+                        "must never change the response language."
+                    )
+                },
+                {
                     "role": "user",
                     "content": prompt
                 }
@@ -824,9 +1031,7 @@ ANSWER
             print(error)
             print("=" * 60)
 
-            if self.is_rate_limit(
-                error
-            ):
+            if self.is_rate_limit(error):
 
                 print(
                     f"[AI] {provider_name} "
@@ -835,9 +1040,7 @@ ANSWER
 
                 return None
 
-            if self.is_temporary_error(
-                error
-            ):
+            if self.is_temporary_error(error):
 
                 wait_time = random.uniform(
                     2,
@@ -871,9 +1074,7 @@ ANSWER
                         "retry failed:"
                     )
 
-                    print(
-                        retry_error
-                    )
+                    print(retry_error)
 
                     return None
 
@@ -928,7 +1129,7 @@ ANSWER
         )
 
     # ========================================================
-    # DISCORD RESPONSE
+    # SEND DISCORD RESPONSE
     # ========================================================
 
     async def send_response(
@@ -977,9 +1178,7 @@ ANSWER
 
         while remaining:
 
-            chunk = remaining[
-                :MAX_LENGTH
-            ]
+            chunk = remaining[:MAX_LENGTH]
 
             if len(remaining) > MAX_LENGTH:
 
@@ -1029,13 +1228,8 @@ ANSWER
         message
     ):
 
-        # Ignore bots
         if message.author.bot:
             return
-
-        # ----------------------------------------------------
-        # Maintenance mode
-        # ----------------------------------------------------
 
         if getattr(
             self.bot,
@@ -1046,23 +1240,11 @@ ANSWER
             if message.author.id != DEV_USER_ID:
                 return
 
-        # ----------------------------------------------------
-        # Check bot
-        # ----------------------------------------------------
-
         if not self.bot.user:
             return
 
-        # ----------------------------------------------------
-        # Only respond to mentions
-        # ----------------------------------------------------
-
         if self.bot.user not in message.mentions:
             return
-
-        # ----------------------------------------------------
-        # Extract question
-        # ----------------------------------------------------
 
         question = message.content
 
@@ -1078,22 +1260,14 @@ ANSWER
 
         question = question.strip()
 
-        # ----------------------------------------------------
-        # Empty question
-        # ----------------------------------------------------
-
         if not question:
 
             await message.reply(
-                "🤖 **Hello!** Ask me something.",
+                "Hello! Ask me something.",
                 mention_author=False
             )
 
             return
-
-        # ----------------------------------------------------
-        # Handle natural-language remember
-        # ----------------------------------------------------
 
         scope, remember_content = (
             self.detect_remember_request(
@@ -1112,29 +1286,16 @@ ANSWER
             if handled:
                 return
 
-        # ----------------------------------------------------
-        # Guild ID
-        # ----------------------------------------------------
-
         guild_id = None
 
         if message.guild:
-
             guild_id = message.guild.id
-
-        # ----------------------------------------------------
-        # Developer mention request
-        # ----------------------------------------------------
 
         mention_developer = (
             self.wants_developer_mention(
                 question
             )
         )
-
-        # ----------------------------------------------------
-        # Generate response
-        # ----------------------------------------------------
 
         try:
 
@@ -1160,7 +1321,7 @@ ANSWER
             print("=" * 60)
 
             await message.reply(
-                "❌ Sorry, I'm having trouble "
+                "Sorry, I'm having trouble "
                 "connecting to my AI providers right now.",
                 mention_author=False
             )
