@@ -61,6 +61,8 @@ COGS = [
     "cogs.dev",
     "cogs.knowledge",
     "cogs.help",
+    "cogs.utility",
+    "cogs.stats",
 ]
 
 
