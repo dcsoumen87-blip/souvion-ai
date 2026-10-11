@@ -63,6 +63,7 @@ COGS = [
     "cogs.help",
     "cogs.utility",
     "cogs.stats",
+    "cogs.ping",
 ]
 
 
