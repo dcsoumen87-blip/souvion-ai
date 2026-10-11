@@ -1,3 +1,4 @@
+
 import asyncio
 import discord
 from discord.ext import commands
@@ -11,7 +12,6 @@ from cogs.knowledge import get_server_prefix
 # ==========================================
 
 intents = discord.Intents.default()
-
 intents.message_content = True
 intents.members = True
 
@@ -21,7 +21,6 @@ intents.members = True
 # ==========================================
 
 def get_prefix(bot, message):
-
     # Default prefix for DMs
     if message.guild is None:
         return BOT_PREFIX
@@ -50,6 +49,7 @@ bot = commands.Bot(
 # ==========================================
 
 bot.maintenance_mode = False
+bot.slash_synced = False
 
 
 # ==========================================
@@ -67,28 +67,36 @@ COGS = [
 ]
 
 
+# ==========================================
+# LOAD COGS
+# ==========================================
+
 async def load_cogs():
-
     for cog in COGS:
-
         try:
-
             await bot.load_extension(cog)
-
             print(f"[COG] Loaded: {cog}")
 
         except Exception as error:
-
             print(f"[COG] Failed to load: {cog}")
             print(f"[ERROR] {error}")
 
 
 # ==========================================
-# BOT READY
+# BOT READY + SLASH COMMAND SYNC
 # ==========================================
 
 @bot.event
 async def on_ready():
+
+    if not bot.slash_synced:
+        try:
+            synced = await bot.tree.sync()
+            print(f"[SLASH] Synced {len(synced)} commands")
+            bot.slash_synced = True
+
+        except Exception as error:
+            print(f"[SLASH] Sync failed: {error}")
 
     print("=" * 50)
     print("SOUVION AI")
@@ -108,7 +116,6 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-
     if message.author.bot:
         return
 
@@ -126,31 +133,20 @@ async def on_command_error(ctx, error):
         return
 
     if isinstance(error, commands.MissingRequiredArgument):
-
-        await ctx.send(
-            "❌ Missing required argument."
-        )
-
+        await ctx.send("❌ Missing required argument.")
         return
 
     if isinstance(error, commands.BadArgument):
-
-        await ctx.send(
-            "❌ Invalid argument provided."
-        )
-
+        await ctx.send("❌ Invalid argument provided.")
         return
 
     if isinstance(error, commands.MissingPermissions):
-
         await ctx.send(
             "❌ You do not have permission to use this command."
         )
-
         return
 
     if isinstance(error, commands.CheckFailure):
-
         return
 
     print("=" * 50)
@@ -166,7 +162,6 @@ async def on_command_error(ctx, error):
 async def main():
 
     if not DISCORD_TOKEN:
-
         raise RuntimeError(
             "DISCORD_TOKEN is missing. "
             "Please add it to Railway Variables."
@@ -188,15 +183,12 @@ async def main():
 if __name__ == "__main__":
 
     try:
-
         asyncio.run(main())
 
     except KeyboardInterrupt:
-
         print("[SYSTEM] Bot stopped.")
 
     except Exception as error:
-
         print("=" * 50)
         print("FATAL ERROR")
         print(error)
